@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mini Runner Pro</title>
+
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; font-family: Arial, sans-serif; }
+
+body {
+  background: #020617;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  color: white;
+  overflow: hidden;
+}
+
+.game-container { position: relative; }
+
+canvas {
+  background: linear-gradient(#1e293b, #020617);
+  border-radius: 12px;
+}
+
+/* UI */
+.overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.75);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10;
+}
+.hidden { display: none; }
+
+.box {
+  background: #020617;
+  padding: 30px;
+  border-radius: 14px;
+  text-align: center;
+  box-shadow: 0 0 40px black;
+}
+
+button {
+  padding: 10px 25px;
+  border: none;
+  border-radius: 8px;
+  background: #38bdf8;
+  font-size: 16px;
+  cursor: pointer;
+}
+button:hover { background: #0ea5e9; }
+
+/* Controls */
+.controls {
+  position: absolute;
+  bottom: 12px;
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  padding: 0 15px;
+}
+.control-left, .control-right {
+  display: flex;
+  gap: 10px;
+}
+.ctrl-btn {
+  width: 55px;
+  height: 55px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.15);
+  border: 2px solid #38bdf8;
+  color: white;
+  font-size: 20px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="game-container">
+
+<canvas id="game" width="800" height="400"></canvas>
+
+<!-- START -->
+<div class="overlay" id="startScreen">
+  <div class="box">
+    <h1>Mini Runner Pro</h1>
+    <p>Hard • Fair • Professional</p><br>
+    <button onclick="startGame()">Start Game</button>
+  </div>
+</div>
+
+<!-- PAUSE -->
+<div class="overlay hidden" id="pauseScreen">
+  <div class="box">
+    <h2>Paused</h2><br>
+    <button onclick="togglePause()">Resume</button>
+  </div>
+</div>
+
+<!-- GAME OVER -->
+<div class="overlay hidden" id="gameOverScreen">
+  <div class="box">
+    <h2>Game Over</h2>
+    <p id="finalScore"></p><br>
+    <button onclick="restart()">Restart</button>
+  </div>
+</div>
+
+<!-- CONTROLS -->
+<div class="controls">
+  <div class="control-left">
+    <div class="ctrl-btn" id="leftBtn">⬅️</div>
+    <div class="ctrl-btn" id="rightBtn">➡️</div>
+  </div>
+  <div class="control-right">
+    <div class="ctrl-btn" id="jumpBtn">⬆️</div>
+    <div class="ctrl-btn" id="pauseBtn">⏸</div>
+  </div>
+</div>
+
+</div>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+let running = false, paused = false;
+let score = 0;
+let gameSpeed = 5;
+
+// Player
+const player = {
+  x: 100, y: 300, w: 40, h: 40,
+  vy: 0, onGround: true, speed: 4
+};
+
+// Obstacles array
+let obstacles = [];
+
+// Sound
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+const beep = (f,d=0.1)=>{
+  const o=audioCtx.createOscillator();
+  o.frequency.value=f;
+  o.connect(audioCtx.destination);
+  o.start(); o.stop(audioCtx.currentTime+d);
+};
+
+// Controls
+let left=false, right=false;
+
+document.addEventListener("keydown", e=>{
+  if(e.code==="KeyA") left=true;
+  if(e.code==="KeyD") right=true;
+  if(e.code==="Space") jump();
+  if(e.code==="KeyP") togglePause();
+});
+document.addEventListener("keyup", e=>{
+  if(e.code==="KeyA") left=false;
+  if(e.code==="KeyD") right=false;
+});
+
+// Touch
+const bind=(b,s,e)=>{
+  b.addEventListener("touchstart",ev=>{ev.preventDefault();s();});
+  b.addEventListener("touchend",ev=>{ev.preventDefault();e();});
+  b.addEventListener("mousedown",s);
+  b.addEventListener("mouseup",e);
+};
+bind(leftBtn,()=>left=true,()=>left=false);
+bind(rightBtn,()=>right=true,()=>right=false);
+bind(jumpBtn,jump,()=>{});
+bind(pauseBtn,togglePause,()=>{});
+
+// Game logic
+function jump(){
+  if(player.onGround && running && !paused){
+    player.vy=-12;
+    player.onGround=false;
+    beep(500);
+  }
+}
+
+function spawnObstacle(){
+  obstacles.push({
+    x:800,
+    y:320,
+    w:40,
+    h:Math.random()>0.5?80:50
+  });
+}
+
+function startGame(){
+  running=true;
+  document.getElementById("startScreen").classList.add("hidden");
+  spawnObstacle();
+  loop();
+}
+
+function togglePause(){
+  if(!running) return;
+  paused=!paused;
+  document.getElementById("pauseScreen").classList.toggle("hidden");
+}
+
+function restart(){ location.reload(); }
+
+function gameOver(){
+  running=false;
+  beep(150,0.4);
+  document.getElementById("finalScore").innerText="Score: "+Math.floor(score);
+  document.getElementById("gameOverScreen").classList.remove("hidden");
+}
+
+function loop(){
+  if(!running || paused){
+    requestAnimationFrame(loop);
+    return;
+  }
+
+  ctx.clearRect(0,0,800,400);
+
+  // Difficulty scaling (PRO)
+  if(score % 300 === 0 && gameSpeed < 10) gameSpeed += 0.3;
+
+  // Player move
+  if(left) player.x -= player.speed;
+  if(right) player.x += player.speed;
+  player.x = Math.max(0, Math.min(760, player.x));
+
+  // Gravity
+  player.vy += 0.6;
+  player.y += player.vy;
+  if(player.y>=300){
+    player.y=300;
+    player.vy=0;
+    player.onGround=true;
+  }
+
+  // Obstacles
+  obstacles.forEach(o=>o.x-=gameSpeed);
+  if(obstacles[0].x < -50){
+    obstacles.shift();
+    spawnObstacle();
+    score+=15;
+  }
+
+  // Collision
+  for(const o of obstacles){
+    if(
+      player.x < o.x+o.w &&
+      player.x+player.w > o.x &&
+      player.y < o.y+o.h &&
+      player.y+player.h > o.y
+    ){
+      gameOver();
+    }
+  }
+
+  // Draw
+  ctx.fillStyle="#38bdf8";
+  ctx.fillRect(player.x,player.y,player.w,player.h);
+
+  ctx.fillStyle="#f87171";
+  obstacles.forEach(o=>ctx.fillRect(o.x,o.y,o.w,o.h));
+
+  ctx.fillStyle="#fff";
+  ctx.fillText("Score: "+Math.floor(score),20,30);
+
+  score+=0.6;
+  requestAnimationFrame(loop);
+}
+</script>
+
+</body>
+</html>
